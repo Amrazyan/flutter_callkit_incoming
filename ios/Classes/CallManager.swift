@@ -86,7 +86,7 @@ class CallManager: NSObject {
             let callTransaction = CXTransaction()
             callTransaction.addAction(endCallAction)
             self.requestCall(callTransaction, action: "endCallAlls")
-        }
+        }	
     }
     
     func activeCalls() -> [[String: Any]] {

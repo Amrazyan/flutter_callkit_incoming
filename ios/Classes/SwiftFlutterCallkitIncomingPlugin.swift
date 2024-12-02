@@ -370,6 +370,10 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             return
         }
 
+        let sss = self.callManager.activeCalls()
+        for call in sss {
+            print("Call Data: \(call)")
+        }
         // Check if the call exists in the CallManager
         if let call = self.callManager.callWithUUID(uuid: uuid) {
             // Handle active calls already tracked in CallManager
@@ -676,7 +680,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
                 let json = ["id": call.uuid.uuidString] as [String: Any]
                 //appDelegate.onDecline(call, action)
-                appDelegate.performRequestTerminated("/decline", parameters: json) { result in
+                appDelegate.performRequestTerminated("/end", parameters: json) { result in
                     switch result {
                     case .success(let data):
                         print("CALLKIT /decline Received data: \(data)")
