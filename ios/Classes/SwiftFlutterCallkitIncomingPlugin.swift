@@ -2,7 +2,6 @@ import Flutter
 import UIKit
 import CallKit
 import AVFoundation
-import Foundation
 
 @available(iOS 10.0, *)
 public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProviderDelegate {
@@ -333,6 +332,36 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         }
     }
 
+//    @objc public func endCall(_ data: Data) {
+//        var uuid: UUID? = nil
+//
+//        uuid = UUID(uuidString: data.uuid)
+//
+//        guard uuid != nil else {
+//            deactivateAudioSession()
+//            return
+//        }
+//
+//
+//        let call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
+//
+//        if (call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
+//            self.callEndTimeout(data)
+//        } else {
+//            let call = Call(uuid: uuid!, data: data)
+//
+//            if (self.isFromPushKit) {
+//                self.isFromPushKit = false
+//                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
+//            }
+//
+//            self.callManager.endCall(call: call)
+//
+//            deactivateAudioSession()
+//        }
+//
+//    }
+    
     @objc public func endCall(_ data: Data) {
         // Extract the UUID from the incoming data
         guard let uuid = UUID(uuidString: data.uuid) else {
@@ -650,15 +679,15 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_DECLINE, self.data?.toJSON())
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
                 let json = ["id": call.uuid.uuidString] as [String: Any]
-                appDelegate.onDecline(call, action)
-//                self.performRequestTerminated("/end", parameters: json) { result in
-//                    switch result {
-//                    case .success(let data):
-//                        print("CALLKIT /decline Received data: \(data)")
-//                    case .failure(let error):
-//                        print("CALLKIT /decline Error: \(error.localizedDescription)")
-//                    }
-//                }
+                //appDelegate.onDecline(call, action)
+                appDelegate.performRequestTerminated("/end", parameters: json) { result in
+                    switch result {
+                    case .success(let data):
+                        print("CALLKIT /decline Received data: \(data)")
+                    case .failure(let error):
+                        print("CALLKIT /decline Error: \(error.localizedDescription)")
+                    }
+                }
             }
             action.fulfill()
         }else {
@@ -669,46 +698,6 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             action.fulfill()
         }
     }
-    
-    
-//        func performRequestTerminated(_ endpoint: String, parameters: [String: Any], completion: @escaping (Result<Any, Error>) -> Void) {
-//            let url = URL(string: "https://dev-pandayo.getpandayo.com/v1/calls" + endpoint)!
-//
-//            let keychain = KeychainSwift()
-//            let userToken = keychain.get("authToken") ?? ""
-//
-//            var request = URLRequest(url: url)
-//            request.httpMethod = "POST"
-//            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-//            request.addValue(userToken, forHTTPHeaderField: "X-Auth-Token")
-//            do {
-//                let jsonData = try JSONSerialization.data(withJSONObject: parameters, options: [])
-//                request.httpBody = jsonData
-//            } catch {
-//                completion(.failure(error))
-//                return
-//            }
-//
-//            let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
-//                if let error = error {
-//                    completion(.failure(error))
-//                       return
-//                   }
-//
-//                   guard let data = data else {
-//                       completion(.failure(NSError(domain: "mobile.app", code: 0, userInfo: [NSLocalizedDescriptionKey: "Empty data"])))
-//                       return
-//                   }
-//
-//                   do {
-//                       let jsonObject = try JSONSerialization.jsonObject(with: data, options: [])
-//                       completion(.success(jsonObject))
-//                   } catch {
-//                       completion(.failure(error))
-//                   }
-//            }
-//            task.resume()
-//        }
     
     
     public func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
