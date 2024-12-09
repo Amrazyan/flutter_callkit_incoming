@@ -296,6 +296,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
                 self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_INCOMING, data.toJSON())
                 self.endCallNotExist(data)
             }
+            
         }
     }
 
@@ -379,11 +380,11 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             // Handle active calls already tracked in CallManager
             print("Ending tracked call with UUID: \(uuid)")
             
-            if self.isFromPushKit {
-                // Send an event if this call originated from PushKit
-                self.isFromPushKit = false
-                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
-            }
+//            if self.isFromPushKit {
+//                // Send an event if this call originated from PushKit
+//                self.isFromPushKit = false
+//                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
+//            }
 
             // End the call and clean up
             self.callManager.endCall(call: call)
@@ -399,6 +400,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             } else {
                 // No further action needed; just deactivate the audio session
                 print("No timeout needed. Cleaning up.")
+                self.endCallNotExist(data)
 //                deactivateAudioSession()
             }
         }
@@ -675,30 +677,48 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         }
         call.endCall()
         self.callManager.removeCall(call)
+        logToFile("CXEndCallAction")
+
         if (self.answerCall == nil && self.outgoingCall == nil) {
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_DECLINE, self.data?.toJSON())
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
                 let json = ["id": call.uuid.uuidString] as [String: Any]
-                //appDelegate.onDecline(call, action)
-                appDelegate.performRequestTerminated("/end", parameters: json) { result in
-                    switch result {
-                    case .success(let data):
-                        print("CALLKIT /decline Received data: \(data)")
-                    case .failure(let error):
-                        print("CALLKIT /decline Error: \(error.localizedDescription)")
-                    }
-                }
+                appDelegate.onDecline(call, action)
+                logToFile("LOG: onDecline \(json)")
             }
+            logToFile("action.fulfill")
+
             action.fulfill()
         }else {
+            logToFile("ACTION_CALL_ENDED")
+
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, call.data.toJSON())
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
                 appDelegate.onEnd(call, action)
             }
+            
             action.fulfill()
         }
     }
-    
+    func logToFile(_ message: String) {
+        let fileName = "app_logs.txt"
+        if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let fileURL = dir.appendingPathComponent(fileName)
+            do {
+                let logMessage = "\(Date()): \(message)\n"
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    let fileHandle = try FileHandle(forWritingTo: fileURL)
+                    fileHandle.seekToEndOfFile()
+                    fileHandle.write(logMessage.data(using: .utf8)!)
+                    fileHandle.closeFile()
+                } else {
+                    try logMessage.write(to: fileURL, atomically: true, encoding: .utf8)
+                }
+            } catch {
+                print("Error writing to log file: \(error)")
+            }
+        }
+    }
     
     public func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
         guard let call = self.callManager.callWithUUID(uuid: action.callUUID) else {
