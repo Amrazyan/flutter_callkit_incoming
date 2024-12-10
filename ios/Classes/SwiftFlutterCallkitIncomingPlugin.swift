@@ -333,79 +333,19 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         }
     }
 
-//    @objc public func endCall(_ data: Data) {
-//        var uuid: UUID? = nil
-//
-//        uuid = UUID(uuidString: data.uuid)
-//
-//        guard uuid != nil else {
-//            deactivateAudioSession()
-//            return
-//        }
-//
-//
-//        let call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
-//
-//        if (call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
-//            self.callEndTimeout(data)
-//        } else {
-//            let call = Call(uuid: uuid!, data: data)
-//
-//            if (self.isFromPushKit) {
-//                self.isFromPushKit = false
-//                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
-//            }
-//
-//            self.callManager.endCall(call: call)
-//
-//            deactivateAudioSession()
-//        }
-//
-//    }
-    
     @objc public func endCall(_ data: Data) {
-        // Extract the UUID from the incoming data
-        guard let uuid = UUID(uuidString: data.uuid) else {
-            print("Invalid UUID. Deactivating audio session.")
-            deactivateAudioSession()
-            return
-        }
-
-        let sss = self.callManager.activeCalls()
-        for call in sss {
-            print("Call Data: \(call)")
-        }
-        // Check if the call exists in the CallManager
-        if let call = self.callManager.callWithUUID(uuid: uuid) {
-            // Handle active calls already tracked in CallManager
-            print("Ending tracked call with UUID: \(uuid)")
-            
-//            if self.isFromPushKit {
-//                // Send an event if this call originated from PushKit
-//                self.isFromPushKit = false
-//                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
-//            }
-
-            // End the call and clean up
-            self.callManager.endCall(call: call)
-            deactivateAudioSession()
-        } else {
-            // Call not found; handle as an unreported call or timeout
-            print("Call not found in CallManager. Checking if timeout is applicable.")
-            if self.answerCall == nil && self.outgoingCall == nil {
-                print("Call not found in CallManager. callEndTimeout")
-
-                // Handle timeout if no active calls exist
-                self.callEndTimeout(data)
-            } else {
-                // No further action needed; just deactivate the audio session
-                print("No timeout needed. Cleaning up.")
-                self.endCallNotExist(data)
-//                deactivateAudioSession()
-            }
-        }
+        
+        var call: Call? = nil
+                if(self.isFromPushKit){
+                    call = Call(uuid: UUID(uuidString: self.data!.uuid)!, data: data)
+                    self.isFromPushKit = false
+                    self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
+                }else {
+                    call = Call(uuid: UUID(uuidString: data.uuid)!, data: data)
+                }
+                self.callManager.endCall(call: call!)
+                deactivateAudioSession()
     }
-
 
     @objc public func connectedCall(_ data: Data) {
         var call: Call? = nil
