@@ -32,6 +32,7 @@ class CallkitSoundPlayerService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        FlutterCallkitIncomingPlugin.getInstance().endAllCalls()
         mediaPlayer?.stop()
         mediaPlayer?.release()
         vibrator?.cancel()
