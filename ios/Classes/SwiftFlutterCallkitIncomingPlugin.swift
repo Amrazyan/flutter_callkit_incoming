@@ -333,20 +333,72 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         }
     }
 
-    @objc public func endCall(_ data: Data) {
-        
-        var call: Call? = nil
-                if(self.isFromPushKit){
-                    call = Call(uuid: UUID(uuidString: self.data!.uuid)!, data: data)
-                    self.isFromPushKit = false
-                    self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
-                }else {
-                    call = Call(uuid: UUID(uuidString: data.uuid)!, data: data)
-                }
-                self.callManager.endCall(call: call!)
-                deactivateAudioSession()
-    }
+//    @objc public func endCall(_ data: Data) {
+//        var uuid: UUID? = nil
+//
+//        uuid = UUID(uuidString: data.uuid)
+//
+//        guard uuid != nil else {
+//            deactivateAudioSession()
+//            return
+//        }
+//
+//
+//        let call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
+//
+//        if (call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
+//            self.callEndTimeout(data)
+//        } else {
+//            let call = Call(uuid: uuid!, data: data)
+//
+//            if (self.isFromPushKit) {
+//                self.isFromPushKit = false
+//                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
+//            }
+//
+//            self.callManager.endCall(call: call)
+//
+//            deactivateAudioSession()
+//        }
+//
+//    }
+    
+    @objc public func endCall(_ data: Data, fromvoip: Bool = false) {
+        print("endCall SWIFT")
 
+        var call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
+        if (fromvoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
+            print("endCall SWIFT FAKE REPORT")
+
+            let cxCallUpdate = CXCallUpdate()
+            self.sharedProvider!.reportNewIncomingCall(
+                with: UUID(uuidString: data.uuid)!,
+                update: cxCallUpdate,
+                completion: { error in
+                    print("endCall SWIFT FAKE REPORT reportNewIncomingCall")
+
+//                    self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.answeredElsewhere)
+                }
+            )
+
+            self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.remoteEnded)
+            print("endCall SWIFT FAKE REPORT callEndTimeout")
+        }
+        else
+        {
+            if(self.isFromPushKit)
+            {
+                call = Call(uuid: UUID(uuidString: self.data!.uuid)!, data: data)
+                self.isFromPushKit = false
+                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
+            }else {
+                call = Call(uuid: UUID(uuidString: data.uuid)!, data: data)
+            }
+            self.callManager.endCall(call: call!)
+            deactivateAudioSession()
+        }
+    }
+    
     @objc public func connectedCall(_ data: Data) {
         var call: Call? = nil
         if(self.isFromPushKit){
@@ -415,6 +467,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
     }
 
     public func reportCallEnd(_ uuid: String?) -> Bool {
+        print("REPORTING CALL ENDDDD")
         let effectiveUuid = uuid ?? self.data?.uuid
 
         if effectiveUuid != nil {
@@ -617,7 +670,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         }
         call.endCall()
         self.callManager.removeCall(call)
-        logToFile("CXEndCallAction")
+        print("CXEndCallAction")
 
         if (self.answerCall == nil && self.outgoingCall == nil) {
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_DECLINE, self.data?.toJSON())
@@ -626,11 +679,11 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
                 appDelegate.onDecline(call, action)
                 logToFile("LOG: onDecline \(json)")
             }
-            logToFile("action.fulfill")
+            print("action.fulfill")
 
             action.fulfill()
         }else {
-            logToFile("ACTION_CALL_ENDED")
+            print("ACTION_CALL_ENDED")
 
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, call.data.toJSON())
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
