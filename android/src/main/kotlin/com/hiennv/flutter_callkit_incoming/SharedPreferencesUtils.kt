@@ -51,7 +51,21 @@ fun getDataActiveCalls(context: Context?): ArrayList<Data> {
 
 fun getDataActiveCallsForFlutter(context: Context?): ArrayList<Map<String, Any?>> {
     val json = getString(context, "ACTIVE_CALLS", "[]")
-    return Utils.getGsonInstance().readValue(json, object : TypeReference<ArrayList<Map<String, Any?>>>() {})
+    val arrayData: ArrayList<Data> = Utils.getGsonInstance()
+        .readValue(json, object : TypeReference<ArrayList<Data>>() {})
+
+// Filter the list to only include calls where isAccepted == true
+    val acceptedData = arrayData.filter { it.isAccepted == true }
+
+    // Convert the filtered list to Map<String, Any?>
+    val result: ArrayList<Map<String, Any?>> = ArrayList()
+    for (data in acceptedData) {
+        val dataMap = Utils.getGsonInstance()
+            .convertValue(data, object : TypeReference<Map<String, Any?>>() {})
+        result.add(dataMap)
+    }
+    return result
+//    return Utils.getGsonInstance().readValue(json, object : TypeReference<ArrayList<Map<String, Any?>>>() {})
 }
 
 fun putString(context: Context?, key: String, value: String?) {
