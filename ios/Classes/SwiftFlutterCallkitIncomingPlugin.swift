@@ -363,11 +363,21 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
 //
 //    }
     
-    @objc public func endCall(_ data: Data, fromvoip: Bool = false) {
+    @objc public func endCall(_ data: Data) {
         print("endCall SWIFT")
+        var fromVoip: Bool // Declare the variable with a specific type.
+        if let dataExtra = data.extra as? [String: Any],
+           let value = dataExtra["fromVoip"] as? Bool {
+            fromVoip = value
+            print("fromVoip: \(fromVoip)")
+        } else {
+            fromVoip = false // Assign a default value in the `else` block.
+        }
+        print("fromVoip: \(fromVoip)")
+
 
         var call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
-        if (fromvoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
+        if (fromVoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
             print("endCall SWIFT FAKE REPORT")
 
             let cxCallUpdate = CXCallUpdate()
