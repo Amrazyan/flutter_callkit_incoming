@@ -404,8 +404,10 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             }else {
                 call = Call(uuid: UUID(uuidString: data.uuid)!, data: data)
             }
-            self.callManager.endCall(call: call!)
-            deactivateAudioSession()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.callManager.endCall(call: call!)
+                self.deactivateAudioSession()
+            }
         }
     }
     
