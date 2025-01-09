@@ -369,12 +369,9 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
         if let dataExtra = data.extra as? [String: Any],
            let value = dataExtra["fromVoip"] as? Bool {
             fromVoip = value
-            print("fromVoip: \(fromVoip)")
         } else {
             fromVoip = false // Assign a default value in the `else` block.
         }
-        print("fromVoip: \(fromVoip)")
-
 
         var call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
         if (fromVoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
@@ -385,13 +382,11 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
                 with: UUID(uuidString: data.uuid)!,
                 update: cxCallUpdate,
                 completion: { error in
+                    self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.answeredElsewhere)
                     print("endCall SWIFT FAKE REPORT reportNewIncomingCall")
-
-//                    self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.answeredElsewhere)
                 }
             )
 
-            self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.remoteEnded)
             print("endCall SWIFT FAKE REPORT callEndTimeout")
         }
         else
@@ -404,10 +399,28 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             }else {
                 call = Call(uuid: UUID(uuidString: data.uuid)!, data: data)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.callManager.endCall(call: call!)
-                self.deactivateAudioSession()
+            if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
+               
+                let json = ["id": call!.uuid.uuidString] as [String: Any]
+                appDelegate.performRequestTerminated("/end", parameters: json) { result in
+                    switch result {
+                    case .success(let data):
+                        self.callManager.endCall(call: call!)
+                        self.callManager.removeCall(call!)
+                        
+                    case .failure(let error):
+                        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
+                                        
+                            self.callManager.endCall(call: call!)
+                            self.callManager.removeCall(call!)
+                                    }
+                     }
+                }
             }
+//            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
+//                self.callManager.endCall(call: call!)
+//                self.deactivateAudioSession()
+//            }
         }
     }
     
@@ -680,12 +693,14 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             action.fail()
             return
         }
-        call.endCall()
-        self.callManager.removeCall(call)
         print("CXEndCallAction")
 
         if (self.answerCall == nil && self.outgoingCall == nil) {
+            call.endCall()
+            self.callManager.removeCall(call)
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_DECLINE, self.data?.toJSON())
+            
+            
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
                 let json = ["id": call.uuid.uuidString] as [String: Any]
                 appDelegate.onDecline(call, action)
@@ -696,15 +711,30 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             action.fulfill()
         }else {
             print("ACTION_CALL_ENDED")
-
+            
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, call.data.toJSON())
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
-                appDelegate.onEnd(call, action)
+               
+                let json = ["id": call.uuid.uuidString] as [String: Any]
+                appDelegate.performRequestTerminated("/end", parameters: json) { result in
+                    switch result {
+                    case .success(let data):
+                        call.endCall()
+                        self.callManager.removeCall(call)
+                        appDelegate.onEnd(call, action)
+                        action.fulfill()
+                    case .failure(let error):
+                        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
+                                        appDelegate.onEnd(call, action)
+                                        action.fulfill()
+                                    }
+                     }
+                }
             }
             
-            action.fulfill()
         }
     }
+    
     func logToFile(_ message: String) {
         let fileName = "app_logs.txt"
         if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
