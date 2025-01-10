@@ -37,6 +37,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
     
     private var data: Data?
     private var isFromPushKit: Bool = false
+    private var isfromvoip: Bool = false
     private var isWaitingForVoip: DispatchWorkItem? = nil
     private var silenceEvents: Bool = false
     private let devicePushTokenVoIP = "DevicePushTokenVoIP"
@@ -364,11 +365,25 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
 //
 //    }
     
-    @objc public func endCall(_ data: Data, fromvoip: Bool = false) {
-            print("endCall SWIFT")
+    @objc public func endCall(_ data: Data) {
+        
+        var fromVoip: Bool // Declare the variable with a specific type.
+                if let dataExtra = data.extra as? [String: Any],
+                   let value = dataExtra["fromVoip"] as? Bool {
+                    fromVoip = value
+                    print("fromVoip: \(fromVoip)")
+                } else {
+                    fromVoip = false // Assign a default value in the `else` block.
+                }
+                print("fromVoip: \(fromVoip)")
+        
+//          fromVoip = false
+            self.isfromvoip = fromVoip
 
             var call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
-            if (fromvoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
+            print("endCall SWIFT \(self.isfromvoip) \(call == nil) \(self.answerCall == nil) \(self.outgoingCall == nil)")
+
+            if (fromVoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
                 print("endCall SWIFT FAKE REPORT")
 
                 let cxCallUpdate = CXCallUpdate()
@@ -377,13 +392,11 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
                     update: cxCallUpdate,
                     completion: { error in
                         print("endCall SWIFT FAKE REPORT reportNewIncomingCall")
-
-    //                    self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.answeredElsewhere)
                     }
                 )
 
-                self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.remoteEnded)
-                print("endCall SWIFT FAKE REPORT callEndTimeout")
+                self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.answeredElsewhere)
+                print("endCall SWIFT FAKE REPORT answeredElsewhere")
             }
             else
             {
@@ -663,6 +676,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
     public func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         if(self.isWaitingForVoip != nil){
             cancelVoipTask();
+            action.fail()
             return;
         }
         guard let call = self.callManager.callWithUUID(uuid: action.callUUID) else {
@@ -693,14 +707,28 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             print("CXEndCallAction.ACTION_CALL_ENDED")
             
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, call.data.toJSON())
+            
+           
+            
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
-                print("CXEndCallAction.performRequestTerminated /END")
+                
 
+                if(self.isfromvoip)
+                {
+                    print("CXEndCallAction.isfromvoip just end call END")
+                    call.endCall()
+                    self.callManager.removeCall(call)
+                    appDelegate.onEnd(call, action)
+                    action.fulfill()
+                    return
+                }
+//                print("CXEndCallAction.performRequestTerminated /END \(self.isfromvoip)")
                 let json = ["id": call.uuid.uuidString] as [String: Any]
                 appDelegate.performRequestTerminated("/end", parameters: json) { result in
                     switch result {
                     case .success(let data):
                         print("CXEndCallAction.performRequestTerminated /END SUCCESS \(data)")
+                        self.isWaitingForVoip = DispatchWorkItem{}
                         call.endCall()
                         self.callManager.removeCall(call)
                         appDelegate.onEnd(call, action)
@@ -708,12 +736,6 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
                     case .failure(let error):
                         print("CXEndCallAction.performRequestTerminated /END FAILURE")
                         self.scheduleVoipTask{action.fulfill()}
-                        
-//                        self.isWaitingForVoip = DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
-//                            print("provider.DispatchQueue 3 sec")
-//                                        appDelegate.onEnd(call, action)
-//                                        action.fulfill()
-//                                    }
                      }
                 }
             }
@@ -741,7 +763,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             self.isWaitingForVoip = workItem
 
             // Schedule the work item
-            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(2), execute: workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3), execute: workItem)
         }
     
     func cancelVoipTask() {
@@ -751,6 +773,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
                 workItem.cancel()
                 self.isWaitingForVoip = nil
             }
+        
         }
     
     func logToFile(_ message: String) {
