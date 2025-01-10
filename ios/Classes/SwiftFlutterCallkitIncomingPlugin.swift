@@ -37,6 +37,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
     
     private var data: Data?
     private var isFromPushKit: Bool = false
+    private var isWaitingForVoip: DispatchWorkItem? = nil
     private var silenceEvents: Bool = false
     private let devicePushTokenVoIP = "DevicePushTokenVoIP"
 
@@ -363,66 +364,42 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
 //
 //    }
     
-    @objc public func endCall(_ data: Data) {
-        print("endCall SWIFT")
-        var fromVoip: Bool // Declare the variable with a specific type.
-        if let dataExtra = data.extra as? [String: Any],
-           let value = dataExtra["fromVoip"] as? Bool {
-            fromVoip = value
-        } else {
-            fromVoip = false // Assign a default value in the `else` block.
-        }
+    @objc public func endCall(_ data: Data, fromvoip: Bool = false) {
+            print("endCall SWIFT")
 
-        var call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
-        if (fromVoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
-            print("endCall SWIFT FAKE REPORT")
+            var call = self.callManager.callWithUUID(uuid: UUID(uuidString: data.uuid)!)
+            if (fromvoip == true && call == nil || (call != nil && self.answerCall == nil && self.outgoingCall == nil)) {
+                print("endCall SWIFT FAKE REPORT")
 
-            let cxCallUpdate = CXCallUpdate()
-            self.sharedProvider!.reportNewIncomingCall(
-                with: UUID(uuidString: data.uuid)!,
-                update: cxCallUpdate,
-                completion: { error in
-                    self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.answeredElsewhere)
-                    print("endCall SWIFT FAKE REPORT reportNewIncomingCall")
-                }
-            )
+                let cxCallUpdate = CXCallUpdate()
+                self.sharedProvider!.reportNewIncomingCall(
+                    with: UUID(uuidString: data.uuid)!,
+                    update: cxCallUpdate,
+                    completion: { error in
+                        print("endCall SWIFT FAKE REPORT reportNewIncomingCall")
 
-            print("endCall SWIFT FAKE REPORT callEndTimeout")
-        }
-        else
-        {
-            if(self.isFromPushKit)
+    //                    self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.answeredElsewhere)
+                    }
+                )
+
+                self.sharedProvider?.reportCall(with: UUID(uuidString: data.uuid)!, endedAt: Date(), reason: CXCallEndedReason.remoteEnded)
+                print("endCall SWIFT FAKE REPORT callEndTimeout")
+            }
+            else
             {
-                call = Call(uuid: UUID(uuidString: self.data!.uuid)!, data: data)
-                self.isFromPushKit = false
-                self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
-            }else {
-                call = Call(uuid: UUID(uuidString: data.uuid)!, data: data)
-            }
-            if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
-               
-                let json = ["id": call!.uuid.uuidString] as [String: Any]
-                appDelegate.performRequestTerminated("/end", parameters: json) { result in
-                    switch result {
-                    case .success(let data):
-                        self.callManager.endCall(call: call!)
-                        self.callManager.removeCall(call!)
-                        
-                    case .failure(let error):
-                        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
-                                        
-                            self.callManager.endCall(call: call!)
-                            self.callManager.removeCall(call!)
-                                    }
-                     }
+                if(self.isFromPushKit)
+                {
+                    call = Call(uuid: UUID(uuidString: self.data!.uuid)!, data: data)
+                    self.isFromPushKit = false
+                    self.sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, data.toJSON())
+                }else {
+                    call = Call(uuid: UUID(uuidString: data.uuid)!, data: data)
                 }
+                self.callManager.endCall(call: call!)
+                deactivateAudioSession()
             }
-//            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
-//                self.callManager.endCall(call: call!)
-//                self.deactivateAudioSession()
-//            }
         }
-    }
+        
     
     @objc public func connectedCall(_ data: Data) {
         var call: Call? = nil
@@ -684,6 +661,10 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
     }
 
     public func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+        if(self.isWaitingForVoip != nil){
+            cancelVoipTask();
+            return;
+        }
         guard let call = self.callManager.callWithUUID(uuid: action.callUUID) else {
             if(self.answerCall == nil && self.outgoingCall == nil){
                 sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_TIMEOUT, self.data?.toJSON())
@@ -693,7 +674,7 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
             action.fail()
             return
         }
-        print("CXEndCallAction")
+        print("CXEndCallAction.CXEndCallAction")
 
         if (self.answerCall == nil && self.outgoingCall == nil) {
             call.endCall()
@@ -706,34 +687,71 @@ public class SwiftFlutterCallkitIncomingPlugin: NSObject, FlutterPlugin, CXProvi
                 appDelegate.onDecline(call, action)
                 logToFile("LOG: onDecline \(json)")
             }
-            print("action.fulfill")
 
             action.fulfill()
         }else {
-            print("ACTION_CALL_ENDED")
+            print("CXEndCallAction.ACTION_CALL_ENDED")
             
             sendEvent(SwiftFlutterCallkitIncomingPlugin.ACTION_CALL_ENDED, call.data.toJSON())
             if let appDelegate = UIApplication.shared.delegate as? CallkitIncomingAppDelegate {
-               
+                print("CXEndCallAction.performRequestTerminated /END")
+
                 let json = ["id": call.uuid.uuidString] as [String: Any]
                 appDelegate.performRequestTerminated("/end", parameters: json) { result in
                     switch result {
                     case .success(let data):
+                        print("CXEndCallAction.performRequestTerminated /END SUCCESS \(data)")
                         call.endCall()
                         self.callManager.removeCall(call)
                         appDelegate.onEnd(call, action)
                         action.fulfill()
                     case .failure(let error):
-                        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
-                                        appDelegate.onEnd(call, action)
-                                        action.fulfill()
-                                    }
+                        print("CXEndCallAction.performRequestTerminated /END FAILURE")
+                        self.scheduleVoipTask{action.fulfill()}
+                        
+//                        self.isWaitingForVoip = DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(3)) {
+//                            print("provider.DispatchQueue 3 sec")
+//                                        appDelegate.onEnd(call, action)
+//                                        action.fulfill()
+//                                    }
                      }
                 }
             }
             
         }
     }
+    
+    func scheduleVoipTask(actionFulfill: @escaping () -> Void) {
+        print("CXEndCallAction.scheduleVoipTask")
+
+            // Cancel any previous task
+            if let workItem = self.isWaitingForVoip {
+                workItem.cancel()
+                self.isWaitingForVoip = nil
+            }
+
+            // Create a new DispatchWorkItem
+            let workItem = DispatchWorkItem { [weak self] in
+                print("CXEndCallAction.DispatchQueue WILL BE CLOSED HERE")
+                actionFulfill()
+                self?.isWaitingForVoip = nil
+            }
+
+            // Assign the work item to the property
+            self.isWaitingForVoip = workItem
+
+            // Schedule the work item
+            DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(2), execute: workItem)
+        }
+    
+    func cancelVoipTask() {
+        print("CXEndCallAction.cancelVoipTask CANCEL DUBLICATE CALL")
+            // Cancel and reset the work item if it exists
+            if let workItem = self.isWaitingForVoip {
+                workItem.cancel()
+                self.isWaitingForVoip = nil
+            }
+        }
     
     func logToFile(_ message: String) {
         let fileName = "app_logs.txt"
